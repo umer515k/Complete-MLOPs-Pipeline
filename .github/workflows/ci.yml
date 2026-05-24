@@ -1,0 +1,55 @@
+name: CI Pipeline
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    name: Train & Test Model
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          pip install scikit-learn fastapi uvicorn pydantic httpx pytest
+
+      - name: Train model
+        run: python training/train.py
+
+      - name: Run API tests
+        run: pytest tests/ -v
+
+  build:
+    name: Build Docker Image
+    runs-on: ubuntu-latest
+    needs: test
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Train model (needed for Docker build)
+        run: |
+          pip install scikit-learn
+          python training/train.py
+
+      - name: Build Docker image
+        run: docker build -t mlops-pipeline:${{ github.sha }} .
+
+      - name: Smoke test container
+        run: |
+          docker run -d -p 8000:8000 --name test-container mlops-pipeline:${{ github.sha }}
+          sleep 3
+          curl --fail http://localhost:8000/health
+          docker stop test-container
