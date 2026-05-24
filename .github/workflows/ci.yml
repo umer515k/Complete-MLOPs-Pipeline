@@ -1,4 +1,4 @@
-name: CI Pipeline
+name: CI/CD Pipeline
 
 on:
   push:
@@ -21,8 +21,7 @@ jobs:
           python-version: "3.11"
 
       - name: Install dependencies
-        run: |
-          pip install scikit-learn fastapi uvicorn pydantic httpx pytest
+        run: pip install scikit-learn fastapi uvicorn pydantic httpx pytest
 
       - name: Train model
         run: python training/train.py
@@ -30,8 +29,8 @@ jobs:
       - name: Run API tests
         run: pytest tests/ -v
 
-  build:
-    name: Build Docker Image
+  build-and-push:
+    name: Build & Push Docker Image
     runs-on: ubuntu-latest
     needs: test
 
@@ -39,17 +38,46 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Train model (needed for Docker build)
+      - name: Train model
         run: |
           pip install scikit-learn
           python training/train.py
 
-      - name: Build Docker image
-        run: docker build -t mlops-pipeline:${{ github.sha }} .
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Smoke test container
-        run: |
-          docker run -d -p 8000:8000 --name test-container mlops-pipeline:${{ github.sha }}
-          sleep 3
-          curl --fail http://localhost:8000/health
-          docker stop test-container
+      - name: Build and push image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ secrets.DOCKERHUB_USERNAME }}/mlops-pipeline:latest
+            ${{ secrets.DOCKERHUB_USERNAME }}/mlops-pipeline:${{ github.sha }}
+
+  deploy:
+    name: Deploy to EC2
+    runs-on: ubuntu-latest
+    needs: build-and-push
+    if: github.ref == 'refs/heads/main'
+
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            docker pull ${{ secrets.DOCKERHUB_USERNAME }}/mlops-pipeline:latest
+            docker stop mlops-app || true
+            docker rm mlops-app || true
+            docker run -d \
+              -p 8000:8000 \
+              --name mlops-app \
+              --restart unless-stopped \
+              ${{ secrets.DOCKERHUB_USERNAME }}/mlops-pipeline:latest
+            docker image prune -f
