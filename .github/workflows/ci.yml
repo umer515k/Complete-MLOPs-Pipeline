@@ -21,7 +21,9 @@ jobs:
           python-version: "3.11"
 
       - name: Install dependencies
-        run: pip install scikit-learn fastapi uvicorn pydantic httpx pytest
+        run: |
+          pip install -r training/requirements.txt
+          pip install fastapi uvicorn pydantic httpx pytest prometheus-fastapi-instrumentator==5.9.1
 
       - name: Train model
         run: python training/train.py
@@ -40,7 +42,7 @@ jobs:
 
       - name: Train model
         run: |
-          pip install scikit-learn
+          pip install -r training/requirements.txt
           python training/train.py
 
       - name: Log in to Docker Hub
@@ -65,19 +67,23 @@ jobs:
     if: github.ref == 'refs/heads/main'
 
     steps:
+      - name: Setup SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.EC2_SSH_KEY }}" | base64 -d > ~/.ssh/mlops-key
+          chmod 600 ~/.ssh/mlops-key
+          ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts
+
       - name: Deploy via SSH
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.EC2_HOST }}
-          username: ${{ secrets.EC2_USER }}
-          key: ${{ secrets.EC2_SSH_KEY }}
-          script: |
-            docker pull ${{ secrets.DOCKERHUB_USERNAME }}/mlops-pipeline:latest
-            docker stop mlops-app || true
-            docker rm mlops-app || true
+        run: |
+          ssh -i ~/.ssh/mlops-key ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} "
+            docker pull ${{ secrets.DOCKERHUB_USERNAME }}/mlops-pipeline:latest &&
+            docker stop mlops-app || true &&
+            docker rm mlops-app || true &&
             docker run -d \
               -p 8000:8000 \
               --name mlops-app \
               --restart unless-stopped \
-              ${{ secrets.DOCKERHUB_USERNAME }}/mlops-pipeline:latest
+              ${{ secrets.DOCKERHUB_USERNAME }}/mlops-pipeline:latest &&
             docker image prune -f
+          "
