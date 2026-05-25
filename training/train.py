@@ -12,7 +12,7 @@ from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_sc
 
 # Load real IMDB dataset
 print("Loading IMDB dataset...")
-dataset = load_dataset("imdb")
+dataset = load_dataset("stanfordnlp/imdb")
 
 train_texts = dataset["train"]["text"]
 train_labels = dataset["train"]["label"]
