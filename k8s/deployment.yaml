@@ -1,0 +1,33 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mlops-pipeline
+  labels:
+    app: mlops-pipeline
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: mlops-pipeline
+  template:
+    metadata:
+      labels:
+        app: mlops-pipeline
+    spec:
+      containers:
+        - name: mlops-pipeline
+          image: umer515k/mlops-pipeline:latest
+          ports:
+            - containerPort: 8000
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 15
+            periodSeconds: 20
