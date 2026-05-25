@@ -1,0 +1,5 @@
+outs:
+- md5: 3b1abfae455a89a1504c56332e832f57
+  size: 66010561
+  hash: md5
+  path: imdb.json
